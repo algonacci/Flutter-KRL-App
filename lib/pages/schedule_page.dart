@@ -1,116 +1,69 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart' hide Response;
 import 'package:krl_app/model/train_schedule.dart';
 
-class SchedulePage extends StatelessWidget {
+class SchedulePage extends StatefulWidget {
   final List<String> stations;
 
-  SchedulePage({super.key, required this.stations});
+  SchedulePage({Key? key, required this.stations}) : super(key: key);
 
-  final RxString selectedFromStation = RxString('');
-  final RxString selectedToStation = RxString('');
-  final RxList<TrainSchedule> schedules = RxList<TrainSchedule>();
+  @override
+  _SchedulePageState createState() => _SchedulePageState();
+}
+
+class _SchedulePageState extends State<SchedulePage> {
+  late String selectedFromStation;
+  late String selectedToStation;
+  late List<TrainSchedule> schedules;
+  bool isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedFromStation =
+        widget.stations.isNotEmpty ? widget.stations.first : '';
+    selectedToStation =
+        widget.stations.length > 1 ? widget.stations[1] : widget.stations.first;
+    schedules = [];
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Ensure that initial values are set for dropdowns
-    if (stations.isNotEmpty) {
-      selectedFromStation.value = stations.first;
-      selectedToStation.value =
-          stations.length > 1 ? stations[1] : stations.first;
-    }
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Schedule Page'),
+        title: const Text('Jadwal Kereta'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Berangkat Dari',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.blue,
-              ),
-            ),
-            const SizedBox(height: 10),
-            DropdownButton<String>(
-              value: selectedFromStation.value,
-              onChanged: (newValue) {
-                if (newValue != null) selectedFromStation.value = newValue;
-              },
-              items: stations.map<DropdownMenuItem<String>>((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value),
-                );
-              }).toList(),
-            ),
+            _buildDropdown(
+                'Berangkat Dari', selectedFromStation, widget.stations),
             const SizedBox(height: 20),
-            const Text(
-              'Menuju Ke',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.blue,
-              ),
-            ),
-            const SizedBox(height: 10),
-            DropdownButton<String>(
-              value: selectedToStation.value,
-              onChanged: (newValue) {
-                if (newValue != null) selectedToStation.value = newValue;
-              },
-              items: stations.map<DropdownMenuItem<String>>((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value),
-                );
-              }).toList(),
-            ),
+            _buildDropdown('Menuju Ke', selectedToStation, widget.stations),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () {
-                _fetchTrainSchedules(selectedFromStation.value);
+                _fetchTrainSchedules(selectedFromStation);
               },
+              child: const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Text('Lihat Jadwal Kereta'),
+              ),
               style: ElevatedButton.styleFrom(
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                 ),
               ),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Text('Lihat Jadwal Kereta'),
-              ),
             ),
             const SizedBox(height: 20),
             Expanded(
-              child: Obx(
-                () => ListView.builder(
-                  itemCount: schedules.length,
-                  itemBuilder: (context, index) {
-                    final schedule = schedules[index];
-                    return ListTile(
-                      title: Text('ID Kereta: ${schedule.trainId}'),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Dari: ${schedule.dest}'),
-                          Text('Menuju: ${schedule.kaName}'),
-                          Text('Rute: ${schedule.routeName}'),
-                          Text('Waktu Berangkat: ${schedule.timeEst}'),
-                          Text('Waktu Sampai: ${schedule.destTime}'),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
+              child: isLoading
+                  ? Center(child: CircularProgressIndicator())
+                  : (schedules.isNotEmpty
+                      ? _buildTrainScheduleCards()
+                      : Center(child: Text('Tidak ada jadwal kereta'))),
             ),
           ],
         ),
@@ -118,20 +71,112 @@ class SchedulePage extends StatelessWidget {
     );
   }
 
+  Widget _buildDropdown(
+      String label, String selectedValue, List<String> items) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.blue,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: DropdownButton<String>(
+            value: selectedValue,
+            onChanged: (newValue) {
+              if (newValue != null) {
+                setState(() {
+                  if (label == 'Berangkat Dari') {
+                    selectedFromStation = newValue;
+                  } else {
+                    selectedToStation = newValue;
+                  }
+                });
+              }
+            },
+            dropdownColor:
+                Colors.white, // Memberikan warna latar belakang dropdown
+            elevation: 4, // Menambah efek elevasi dropdown
+            icon:
+                Icon(Icons.arrow_drop_down), // Menambahkan ikon panah ke bawah
+            items: items.map<DropdownMenuItem<String>>((String value) {
+              return DropdownMenuItem<String>(
+                value: value,
+                child: SizedBox(
+                  width: MediaQuery.of(context).size.width * 0.8,
+                  child: Text(
+                    value,
+                    textAlign: TextAlign.left,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTrainScheduleCards() {
+    return ListView.builder(
+      itemCount: schedules.length,
+      itemBuilder: (context, index) {
+        final schedule = schedules[index];
+        return Card(
+          elevation: 3,
+          margin: EdgeInsets.symmetric(vertical: 8),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('ID: ${schedule.trainId}'),
+                SizedBox(height: 8),
+                Text('Dari: ${schedule.kaName}'),
+                SizedBox(height: 8),
+                Text('Rute: ${schedule.routeName}'),
+                SizedBox(height: 8),
+                Text('Waktu Berangkat: ${schedule.timeEst}'),
+                SizedBox(height: 8),
+                Text('Waktu Sampai: ${schedule.destTime}'),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _fetchTrainSchedules(String fromStationId) async {
+    setState(() {
+      isLoading = true;
+    });
     try {
       List<TrainSchedule> fetchedSchedules =
           await fetchTrainSchedulesFromAPI(fromStationId);
 
-      // Filter schedules based on selected destination station
-      fetchedSchedules = fetchedSchedules
-          .where((schedule) => schedule.dest == selectedToStation.value)
-          .toList();
-
-      schedules.assignAll(fetchedSchedules);
+      setState(() {
+        schedules = fetchedSchedules;
+      });
     } catch (e) {
-      // Handle error, show snackbar, toast, etc.
       print('Error fetching train schedules: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to load train schedules'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
     }
   }
 
@@ -150,9 +195,8 @@ class SchedulePage extends StatelessWidget {
       );
 
       if (response.statusCode == 200) {
-        // Access the "data" key of the response
-        List<dynamic> data = response.data['data'];
-        List<TrainSchedule> schedules =
+        final List<dynamic> data = response.data['data'];
+        final schedules =
             data.map((dynamic item) => TrainSchedule.fromJson(item)).toList();
         return schedules;
       } else {
